@@ -269,11 +269,11 @@
       <div class="field-row">
         <div class="field">
           <label for="firstBrief">First brief (HH:MM)</label>
-          <input type="time" id="firstBrief" value="06:00">
+          <input type="time" id="firstBrief">
         </div>
         <div class="field">
           <label for="lastLand">Last land (HH:MM)</label>
-          <input type="time" id="lastLand" value="22:00">
+          <input type="time" id="lastLand">
         </div>
       </div>
 
@@ -444,6 +444,10 @@
     const quiet = document.getElementById("quiet").checked;
     const brief = document.getElementById("firstBrief").value;
     const land = document.getElementById("lastLand").value;
+    if (!brief || !land) {
+      output.innerHTML = "";
+      return;
+    }
     setEngineLabel();
     try {
       const result = await compute(brief, land);
