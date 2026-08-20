@@ -29,8 +29,9 @@
     font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
     color: var(--text);
     display: flex;
-    align-items: flex-start;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
     padding: 40px 16px;
     position: relative;
     overflow-x: hidden;
@@ -208,6 +209,32 @@
   }
   .quiet-toggle input { width: 16px; height: 16px; accent-color: var(--accent-strong); }
 
+  .shell {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 560px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .back {
+    align-self: flex-start;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: lowercase;
+    text-decoration: none;
+    padding: 6px 2px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .back::before { content: "←"; color: var(--accent); font-size: 0.95rem; }
+  .back:hover { color: var(--text); }
+
   .engine {
     margin-top: 12px;
     font-size: 0.72rem;
@@ -308,6 +335,8 @@
 </style>
 </head>
 <body>
+  <div class="shell">
+    <a class="back" href="../">wx-tools</a>
   <div class="card">
     <header>
       <h1>Split Shift Changeover Calculator</h1>
@@ -340,6 +369,7 @@
       <p class="engine" id="engine" aria-live="polite">Engine: loading Python&hellip;</p>
       <div class="output" id="output" aria-live="polite"></div>
     </div>
+  </div>
   </div>
 
 <script src="https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js"></script>
