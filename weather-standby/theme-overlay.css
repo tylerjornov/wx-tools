@@ -14,6 +14,7 @@ html, body, #root, .app-shell {
   background: var(--bg);
   color: var(--text);
   line-height: 1.55;
+  overflow-x: hidden;
 }
 
 .app-shell {
@@ -184,11 +185,21 @@ input, select, textarea {
 }
 
 .raw-taf {
-  white-space: pre;
-  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   line-height: 1.5;
   font-size: 12px;
   letter-spacing: 0;
+  max-width: 100%;
+}
+
+.main,
+.header-top,
+.panel,
+.taf-item {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .taf-item { overflow: hidden; }
