@@ -10,8 +10,6 @@
     />
     <title>Stand-By Console</title>
     <script>
-      // GitHub Pages cannot proxy AWC. Rewrite aviationweather.gov API calls
-      // through cors.eu.org so the browser gets the real AWC JSON (CORS *).
       (() => {
         const orig = window.fetch.bind(window);
         const PROXY = "https://cors.eu.org/";
@@ -74,13 +72,12 @@
           const tabs = Array.from(bar.querySelectorAll(".tab"));
           if (!tabs.length) return;
           tabs.forEach((t) => {
-            const span = t.querySelector("span");
-            if (span && span.textContent.trim() === "Met Watch") span.textContent = "METWATCH";
+            const text = t.textContent.trim();
+            if (text === "Met Watch") t.textContent = "METWATCH";
           });
           const byLabel = {};
-          tabs.forEach((t) => {
-            const label = (t.querySelector("span") || t).textContent.trim();
-            byLabel[label] = t;
+          Array.from(bar.querySelectorAll(".tab")).forEach((t) => {
+            byLabel[t.textContent.trim()] = t;
           });
           if (byLabel["METWATCH"] && byLabel["Products"]) {
             order.forEach((label) => {
@@ -91,7 +88,7 @@
         }
         const obs = new MutationObserver(fixTabs);
         obs.observe(document.documentElement, { childList: true, subtree: true });
-        setInterval(fixTabs, 1000);
+        setInterval(fixTabs, 500);
       })();
     </script>
   </body>

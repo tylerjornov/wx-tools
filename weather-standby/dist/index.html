@@ -4,31 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Weather standby console — METAR/TAF board, mission thresholds, WWA log, and brief builder."
-    />
+    <meta name="description" content="Weather standby console" />
     <title>Stand-By Console</title>
     <script>
       (() => {
         const orig = window.fetch.bind(window);
         const PROXY = "https://cors.eu.org/";
-
         function formatTafBody(text) {
-          let joined = String(text || "")
-            .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "")
-            .replace(/\s+/g, " ")
-            .replace(/^TAF\s+(TAF\b)/i, "$1")
-            .trim();
+          let joined = String(text || "").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "").replace(/\s+/g, " ").replace(/^TAF\s+(TAF\b)/i, "$1").trim();
           if (!joined) return "";
           if (!/^TAF\b/i.test(joined)) joined = "TAF " + joined;
-          joined = joined.replace(/\s*=\s*$/, "=");
-          return joined.replace(
-            /\s+(FM\d{6}|BECMG\s+\d{4}\/\d{4}|BECMG\s+\d{4}(?!\d)|TEMPO\s+\d{4}\/\d{4}|PROB\d{2}(?:\s+\d{4}\/\d{4})?)/g,
-            "\n     $1",
-          );
+          return joined.replace(/\s*=\s*$/, "=").replace(/\s+(FM\d{6}|BECMG\s+\d{4}\/\d{4}|BECMG\s+\d{4}(?!\d)|TEMPO\s+\d{4}\/\d{4}|PROB\d{2}(?:\s+\d{4}\/\d{4})?)/g, "\n     $1");
         }
-
         window.fetch = async function (input, init) {
           const url = typeof input === "string" ? input : input && input.url ? input.url : "";
           if (url.includes("aviationweather.gov") && !url.startsWith(PROXY)) {
@@ -37,16 +24,7 @@
               try {
                 const data = await res.clone().json();
                 if (Array.isArray(data)) {
-                  const formatted = data.map((row) =>
-                    row && row.rawTAF
-                      ? { ...row, rawTAF: formatTafBody(row.rawTAF) }
-                      : row,
-                  );
-                  return new Response(JSON.stringify(formatted), {
-                    status: res.status,
-                    statusText: res.statusText,
-                    headers: { "Content-Type": "application/json" },
-                  });
+                  return new Response(JSON.stringify(data.map((row) => row && row.rawTAF ? { ...row, rawTAF: formatTafBody(row.rawTAF) } : row)), { status: res.status, headers: { "Content-Type": "application/json" } });
                 }
               } catch (_) {}
             }
@@ -70,26 +48,15 @@
           const bar = document.querySelector(".tab-bar");
           if (!bar) return;
           const tabs = Array.from(bar.querySelectorAll(".tab"));
-          if (!tabs.length) return;
-          tabs.forEach((t) => {
-            const span = t.querySelector("span");
-            if (span && span.textContent.trim() === "Met Watch") span.textContent = "METWATCH";
-          });
+          tabs.forEach((t) => { if (t.textContent.trim() === "Met Watch") t.textContent = "METWATCH"; });
           const byLabel = {};
-          tabs.forEach((t) => {
-            const label = (t.querySelector("span") || t).textContent.trim();
-            byLabel[label] = t;
-          });
+          Array.from(bar.querySelectorAll(".tab")).forEach((t) => { byLabel[t.textContent.trim()] = t; });
           if (byLabel["METWATCH"] && byLabel["Products"]) {
-            order.forEach((label) => {
-              const el = byLabel[label];
-              if (el) bar.appendChild(el);
-            });
+            order.forEach((label) => { const el = byLabel[label]; if (el) bar.appendChild(el); });
           }
         }
-        const obs = new MutationObserver(fixTabs);
-        obs.observe(document.documentElement, { childList: true, subtree: true });
-        setInterval(fixTabs, 1000);
+        new MutationObserver(fixTabs).observe(document.documentElement, { childList: true, subtree: true });
+        setInterval(fixTabs, 500);
       })();
     </script>
   </body>
