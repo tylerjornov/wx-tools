@@ -85,6 +85,46 @@
           return rows.filter(Boolean);
         }
 
+        function formatTaf(text, icao) {
+          const lines = text
+            .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "")
+            .replace(/\r/g, "")
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .filter(
+              (l) =>
+                !/^(NNN+|000|\d{3})$/.test(l) &&
+                !/^FT[A-Z]{2}\d{2}\b/.test(l) &&
+                !new RegExp("^TAF" + icao.slice(-3) + "$", "i").test(l),
+            );
+          const start = lines.findIndex(
+            (l) =>
+              /^(TAF(\s+AMD|\s+COR)?)\b/i.test(l) ||
+              new RegExp("^(TAF\\s+(AMD\\s+|COR\\s+)?)?" + icao + "\\b", "i").test(l),
+          );
+          let joined = (start >= 0 ? lines.slice(start) : lines).join(" ");
+          joined = joined.replace(/\s+/g, " ").trim();
+          if (!joined) return "";
+          if (!/^TAF\b/i.test(joined)) joined = "TAF " + joined;
+          joined = joined.replace(/\s*=\s*$/, "=");
+          joined = joined.replace(
+            /\s+(FM\d{6}|BECMG\s+\d{4}\/\d{4}|BECMG\s+\d{4}(?!\d)|TEMPO\s+\d{4}\/\d{4}|PROB\d{2}(?:\s+\d{4}\/\d{4})?)/g,
+            "\n     $1",
+          );
+          return joined;
+        }
+
+        function issueTimeFromTaf(raw) {
+          const m = /\b(\d{2})(\d{2})(\d{2})Z\b/.exec(raw || "");
+          if (!m) return null;
+          const now = new Date();
+          const dt = new Date(
+            Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), Number(m[1]), Number(m[2]), Number(m[3])),
+          );
+          return dt.toISOString();
+        }
+
         async function tafs(ids) {
           const list = ids.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
           return Promise.all(
@@ -94,9 +134,8 @@
                 `https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py?fmt=text&pil=${encodeURIComponent(pil)}`,
               );
               if (!r.ok) return { icaoId: id, rawTAF: "", issueTime: null };
-              const text = (await r.text()).replace(/[\x01\x03]/g, "").trim();
-              const m = text.match(new RegExp(`TAF(?:\\s+AMD|\\s+COR)?[\\s\\S]*${id}[\\s\\S]*`, "i"));
-              return { icaoId: id, rawTAF: (m ? m[0] : text).trim(), issueTime: null };
+              const rawTAF = formatTaf(await r.text(), id);
+              return { icaoId: id, rawTAF, issueTime: issueTimeFromTaf(rawTAF) };
             }),
           );
         }
@@ -119,6 +158,7 @@
     </script>
     <script type="module" crossorigin src="./dist/assets/index-D3QOWLM3.js"></script>
     <link rel="stylesheet" crossorigin href="./dist/assets/index-B9rkFgCl.css">
+    <link rel="stylesheet" href="./theme-overlay.css">
   </head>
   <body>
     <div id="root"></div>

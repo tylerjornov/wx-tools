@@ -1,0 +1,228 @@
+@import "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap";
+
+:root {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Inter", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --ring: #2a403c;
+  --shadow: 0 0 0 1px #2a403c, 0 6px 18px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 0 0 1px #1e2f2c;
+}
+
+html, body, #root, .app-shell {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.app-shell {
+  background: var(--bg);
+}
+
+.app-header {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: var(--bg);
+  border-bottom: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.brand-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  box-shadow: none;
+}
+
+.brand-title {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  text-transform: none;
+  color: var(--text);
+}
+
+.brand-sub {
+  font-size: 12px;
+  letter-spacing: 0;
+  color: color-mix(in srgb, var(--text) 55%, transparent);
+}
+
+.clock-block,
+.panel,
+.metar-card,
+.taf-item,
+.wwa-card,
+.link-card,
+.modal,
+.brief-preview,
+.log-row,
+.th-row {
+  border-radius: 8px;
+}
+
+.clock-block {
+  background: var(--surface);
+  border: none;
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+}
+
+.clock-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+
+.clock-value,
+.icao,
+.icao-sm,
+.flt-cat,
+.go-badge,
+.status-pill,
+.cat,
+.wwa-type {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+}
+
+.tab-bar { gap: 6px; }
+
+.tab {
+  border-radius: 8px;
+  font-weight: 500;
+  letter-spacing: 0;
+  border: 1px solid transparent;
+  min-height: 36px;
+}
+
+.tab.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--accent);
+}
+
+.panel,
+.metar-card,
+.taf-item,
+.wwa-card,
+.link-card,
+.modal {
+  background: var(--surface);
+  border: none;
+  box-shadow: var(--shadow);
+}
+
+.metar-card {
+  border-top: none;
+  box-shadow: var(--shadow);
+}
+
+.panel-head h2,
+.modal-head h2,
+.modal-section,
+.alerts-title,
+.th-row.head {
+  font-family: var(--font-sans);
+  text-transform: none;
+  letter-spacing: -0.015em;
+  font-weight: 500;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.th-row.head {
+  font-size: 12px;
+  color: var(--muted, var(--text-muted));
+}
+
+.btn,
+.btn.primary,
+.btn.ghost,
+.btn.sm {
+  border-radius: 8px;
+  font-weight: 500;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  box-shadow: none;
+  filter: none;
+}
+
+.btn.primary {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.btn:hover:not(:disabled),
+.btn.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  filter: none;
+}
+
+.btn.danger { color: #ff9b9b; border-color: #ff9b9b; }
+
+input, select, textarea {
+  background: #182428;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+}
+
+.raw-ob,
+.raw-taf,
+.brief-preview {
+  font-family: var(--font-mono);
+  background: color-mix(in srgb, var(--text) 4%, var(--surface));
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.raw-taf {
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.5;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.taf-item { overflow: hidden; }
+.taf-head {
+  border-bottom: none;
+  background: transparent;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.banner,
+.alerts-strip {
+  border-radius: 8px;
+}
+
+.pill.primary,
+.flt-cat {
+  border-radius: 8px;
+}
+
+.app-footer {
+  border-top: none;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.wx-home-link {
+  position: absolute;
+  left: 16px;
+  top: 10px;
+  z-index: 50;
+  color: color-mix(in srgb, var(--text) 55%, transparent);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  min-height: 32px;
+  display: none;
+}
