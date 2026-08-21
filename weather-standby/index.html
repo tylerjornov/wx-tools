@@ -65,5 +65,34 @@
   <body>
     <a class="wx-home-link" href="../">← wx-tools</a>
     <div id="root"></div>
+    <script>
+      (() => {
+        const order = ["METWATCH", "Products", "Thresholds", "WWA Log", "Brief", "Shift Log"];
+        function fixTabs() {
+          const bar = document.querySelector(".tab-bar");
+          if (!bar) return;
+          const tabs = Array.from(bar.querySelectorAll(".tab"));
+          if (!tabs.length) return;
+          tabs.forEach((t) => {
+            const span = t.querySelector("span");
+            if (span && span.textContent.trim() === "Met Watch") span.textContent = "METWATCH";
+          });
+          const byLabel = {};
+          tabs.forEach((t) => {
+            const label = (t.querySelector("span") || t).textContent.trim();
+            byLabel[label] = t;
+          });
+          if (byLabel["METWATCH"] && byLabel["Products"]) {
+            order.forEach((label) => {
+              const el = byLabel[label];
+              if (el) bar.appendChild(el);
+            });
+          }
+        }
+        const obs = new MutationObserver(fixTabs);
+        obs.observe(document.documentElement, { childList: true, subtree: true });
+        setInterval(fixTabs, 1000);
+      })();
+    </script>
   </body>
 </html>
