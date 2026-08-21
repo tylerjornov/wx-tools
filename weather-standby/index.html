@@ -6,92 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="1W051 weather standby console — METAR/TAF board, mission thresholds, WWA log, and brief builder."
+      content="Weather standby console — METAR/TAF board, mission thresholds, WWA log, and brief builder."
     />
-    <title>1W051 Stand-By Console</title>
+    <title>Stand-By Console</title>
     <script>
-      // GitHub Pages cannot use the Vite AWC proxy. Rewrite those calls
-      // through CORS-enabled NWS / IEM endpoints and keep AWC JSON shape.
+      // GitHub Pages cannot proxy AWC. Rewrite aviationweather.gov API calls
+      // through cors.eu.org so the browser gets the real AWC JSON (CORS *).
       (() => {
         const orig = window.fetch.bind(window);
-        const json = (data, status = 200) =>
-          new Response(JSON.stringify(data), {
-            status,
-            headers: { "Content-Type": "application/json" },
-          });
-        const v = (o) => (o && typeof o === "object" && "value" in o ? o.value : null);
-        const idsOf = (url) =>
-          new URL(url, location.href).searchParams.get("ids") || "";
-
-        function altimFromRaw(raw) {
-          const m = /A(\d{4})/.exec(raw || "");
-          return m ? Number(m[1]) / 100 : null;
-        }
-
-        async function metars(ids) {
-          const list = ids.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
-          const rows = await Promise.all(
-            list.map(async (id) => {
-              const r = await orig(
-                `https://api.weather.gov/stations/${id}/observations/latest`,
-                { headers: { Accept: "application/geo+json" } },
-              );
-              if (!r.ok) return null;
-              const j = await r.json();
-              const p = j.properties || {};
-              const raw = p.rawMessage || "";
-              const visM = v(p.visibility);
-              let visib = visM == null ? null : Number((visM / 1609.344).toFixed(1));
-              if (visib != null && visib >= 10) visib = "10+";
-              const wspdKmh = v(p.windSpeed);
-              const wgstKmh = v(p.windGust);
-              const clouds = (p.cloudLayers || []).map((c) => ({
-                cover: c.amount,
-                base:
-                  c.base && c.base.value != null
-                    ? Math.round(c.base.value * 3.28084)
-                    : null,
-              }));
-              const ts = p.timestamp ? Date.parse(p.timestamp) : Date.now();
-              const coords = j.geometry && j.geometry.coordinates;
-              const slpPa = v(p.seaLevelPressure);
-              const baroPa = v(p.barometricPressure);
-              return {
-                icaoId: id,
-                rawOb: raw,
-                temp: v(p.temperature),
-                dewp: v(p.dewpoint),
-                wdir: v(p.windDirection),
-                wspd: wspdKmh == null ? null : Math.round(wspdKmh / 1.852),
-                wgst: wgstKmh == null ? null : Math.round(wgstKmh / 1.852),
-                visib,
-                altim:
-                  slpPa != null
-                    ? slpPa / 100
-                    : baroPa != null
-                      ? baroPa / 100
-                      : altimFromRaw(raw),
-                clouds,
-                cover: clouds[0]?.cover || "CLR",
-                lat: coords ? coords[1] : null,
-                lon: coords ? coords[0] : null,
-                obsTime: Math.floor(ts / 1000),
-                reportTime: p.timestamp || new Date(ts).toISOString(),
-                name: id,
-                wxString: p.textDescription || null,
-              };
-            }),
-          );
-          return rows.filter(Boolean);
-        }
-
-        function zuluGroup(iso) {
-          if (!iso) return "";
-          const d = new Date(iso);
-          if (Number.isNaN(d.getTime())) return "";
-          const p = (n) => String(n).padStart(2, "0");
-          return p(d.getUTCDate()) + p(d.getUTCHours()) + p(d.getUTCMinutes());
-        }
+        const PROXY = "https://cors.eu.org/";
 
         function formatTafBody(text) {
           let joined = String(text || "")
@@ -108,98 +31,28 @@
           );
         }
 
-        function tafFromIemRows(rows, icao) {
-          if (!Array.isArray(rows) || !rows.length) return null;
-          const first = rows[0];
-          const productId = first.product_id || "";
-          const stamp = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/.exec(productId);
-          const issueIso = stamp
-            ? `${stamp[1]}-${stamp[2]}-${stamp[3]}T${stamp[4]}:${stamp[5]}:00Z`
-            : first.utc_valid || first.utc_taf_issue || null;
-          const ddhhmm = zuluGroup(issueIso);
-          const from = zuluGroup(first.utc_taf_issue).slice(0, 4);
-          const to = zuluGroup(first.utc_taf_expire).slice(0, 4);
-          const amd = rows.some((r) => r.is_amendment);
-          const header = [`TAF${amd ? " AMD" : ""}`, icao, ddhhmm ? ddhhmm + "Z" : "", from && to ? `${from}/${to}` : ""]
-            .filter(Boolean)
-            .join(" ");
-          const periods = rows
-            .map((r, i) => {
-              const raw = String(r.raw || "").trim();
-              if (!raw) return "";
-              if (i === 0 && !/^(FM|BECMG|TEMPO|PROB)/i.test(raw)) return raw;
-              return raw;
-            })
-            .filter(Boolean);
-          return {
-            rawTAF: formatTafBody([header, ...periods].join(" ")),
-            issueTime: issueIso,
-          };
-        }
-
-        function tafIsFresh(raw) {
-          const m = /\b(\d{2})(\d{2})(\d{2})Z\b/.exec(raw || "");
-          if (!m) return false;
-          const now = new Date();
-          const dt = new Date(
-            Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), Number(m[1]), Number(m[2]), Number(m[3])),
-          );
-          if (dt > now) dt.setUTCMonth(dt.getUTCMonth() - 1);
-          return now - dt < 36 * 3600 * 1000;
-        }
-
-        async function tafs(ids) {
-          const list = ids.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
-          return Promise.all(
-            list.map(async (id) => {
-              try {
-                const r = await orig(
-                  `https://mesonet.agron.iastate.edu/api/1/nws/taf.json?station=${encodeURIComponent(id)}`,
-                );
-                if (r.ok) {
-                  const payload = await r.json();
-                  const built = tafFromIemRows(payload.data || payload, id);
-                  if (built && built.rawTAF) return { icaoId: id, ...built };
-                }
-              } catch (_) {}
-              const pil = "TAF" + (id.startsWith("K") && id.length === 4 ? id.slice(1) : id);
-              try {
-                const r = await orig(
-                  `https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py?fmt=text&pil=${encodeURIComponent(pil)}`,
-                );
-                if (r.ok) {
-                  const text = await r.text();
-                  const idx = text.toUpperCase().indexOf(id);
-                  const slice = idx >= 0 ? text.slice(Math.max(0, idx - 12)) : "";
-                  const rawTAF = formatTafBody(slice);
-                  if (rawTAF.includes(id) && tafIsFresh(rawTAF)) {
-                    const m = /\b(\d{2})(\d{2})(\d{2})Z\b/.exec(rawTAF);
-                    const now = new Date();
-                    const issueTime = m
-                      ? new Date(
-                          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), Number(m[1]), Number(m[2]), Number(m[3])),
-                        ).toISOString()
-                      : null;
-                    return { icaoId: id, rawTAF, issueTime };
-                  }
-                }
-              } catch (_) {}
-              return { icaoId: id, rawTAF: "", issueTime: null };
-            }),
-          );
-        }
-
-        const isAwc = (url) =>
-          url.includes("aviationweather.gov") || url.includes("/api/awc");
-
         window.fetch = async function (input, init) {
           const url = typeof input === "string" ? input : input && input.url ? input.url : "";
-          try {
-            if (isAwc(url) && url.includes("/metar")) return json(await metars(idsOf(url)));
-            if (isAwc(url) && url.includes("/taf")) return json(await tafs(idsOf(url)));
-            if (isAwc(url) && url.includes("/airsigmet")) return json([]);
-          } catch (err) {
-            return json({ error: String(err) }, 502);
+          if (url.includes("aviationweather.gov") && !url.startsWith(PROXY)) {
+            const res = await orig(PROXY + url, init);
+            if (url.includes("/taf") && res.ok) {
+              try {
+                const data = await res.clone().json();
+                if (Array.isArray(data)) {
+                  const formatted = data.map((row) =>
+                    row && row.rawTAF
+                      ? { ...row, rawTAF: formatTafBody(row.rawTAF) }
+                      : row,
+                  );
+                  return new Response(JSON.stringify(formatted), {
+                    status: res.status,
+                    statusText: res.statusText,
+                    headers: { "Content-Type": "application/json" },
+                  });
+                }
+              } catch (_) {}
+            }
+            return res;
           }
           return orig(input, init);
         };
@@ -210,6 +63,7 @@
     <link rel="stylesheet" href="./theme-overlay.css">
   </head>
   <body>
+    <a class="wx-home-link" href="../">← wx-tools</a>
     <div id="root"></div>
   </body>
 </html>
