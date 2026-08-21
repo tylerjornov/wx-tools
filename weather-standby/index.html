@@ -4,55 +4,121 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./dist/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Weather standby console — METAR/TAF board, mission thresholds, WWA log, and brief builder."
-    />
+    <meta name="description" content="Weather standby console — METAR/TAF board, mission thresholds, WWA log, and brief builder." />
     <title>Stand-By Console</title>
     <script>
+      // AWC API has no CORS. Use API proxies + native-CORS NWS/IEM fallbacks.
       (() => {
         const orig = window.fetch.bind(window);
-        const PROXY = "https://cors.eu.org/";
-
-        function formatTafBody(text) {
-          let joined = String(text || "")
-            .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "")
-            .replace(/\s+/g, " ")
-            .replace(/^TAF\s+(TAF\b)/i, "$1")
-            .trim();
-          if (!joined) return "";
-          if (!/^TAF\b/i.test(joined)) joined = "TAF " + joined;
-          joined = joined.replace(/\s*=\s*$/, "=");
-          return joined.replace(
-            /\s+(FM\d{6}|BECMG\s+\d{4}\/\d{4}|BECMG\s+\d{4}(?!\d)|TEMPO\s+\d{4}\/\d{4}|PROB\d{2}(?:\s+\d{4}\/\d{4})?)/g,
-            "\n     $1",
-          );
+        const proxies = [
+          (u) => "https://cors.eu.org/" + u,
+          (u) => "https://proxy.cors.sh/" + u,
+        ];
+        function formatTaf(text) {
+          let j = String(text || "").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, "").replace(/\s+/g, " ").replace(/^TAF\s+(TAF\b)/i, "$1").trim();
+          if (!j) return "";
+          if (!/^TAF\b/i.test(j)) j = "TAF " + j;
+          j = j.replace(/\s*=\s*$/, "=");
+          return j.replace(/\s+(FM\d{6}|BECMG\s+\d{4}\/\d{4}|BECMG\s+\d{4}(?!\d)|TEMPO\s+\d{4}\/\d{4}|PROB\d{2}(?:\s+\d{4}\/\d{4})?)/g, "\n     $1");
         }
-
+        function idsFrom(url) {
+          try { return (new URL(url).searchParams.get("ids") || "").toUpperCase().split(",").map(s => s.trim()).filter(Boolean); }
+          catch { return []; }
+        }
+        async function viaProxy(url) {
+          let err;
+          for (const p of proxies) {
+            try {
+              const r = await orig(p(url), { headers: { Accept: "application/json" } });
+              if (r.ok) return r;
+              err = new Error("status " + r.status);
+            } catch (e) { err = e; }
+          }
+          throw err || new Error("proxies failed");
+        }
+        async function nwsMetar(ids) {
+          const out = [];
+          await Promise.all(ids.map(async (icao) => {
+            try {
+              const r = await orig("https://api.weather.gov/stations/" + icao + "/observations/latest", {
+                headers: { Accept: "application/geo+json", "User-Agent": "wx-tools-standby (github.com/tylerjornov/wx-tools)" }
+              });
+              if (!r.ok) return;
+              const p = (await r.json()).properties || {};
+              if (!p.rawMessage) return;
+              out.push({
+                icaoId: icao, rawOb: p.rawMessage, reportTime: p.timestamp || null,
+                obsTime: p.timestamp ? Date.parse(p.timestamp) / 1000 : null,
+                temp: p.temperature?.value, dewp: p.dewpoint?.value,
+                wdir: p.windDirection?.value,
+                wspd: p.windSpeed?.value != null ? Math.round(p.windSpeed.value / 1.852) : null,
+                visib: p.visibility?.value != null ? String(Math.round(p.visibility.value / 1609.344)) : null,
+                cover: null, clouds: [], fltCat: null, name: icao
+              });
+            } catch (_) {}
+          }));
+          return out;
+        }
+        async function iemTaf(ids) {
+          const out = [], now = Date.now();
+          await Promise.all(ids.map(async (icao) => {
+            try {
+              const r = await orig("https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py?pil=TAF" + icao.slice(-3) + "&fmt=text&limit=1");
+              if (!r.ok) return;
+              let t = (await r.text()).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, " ").trim();
+              const m = t.match(/\bTAF(?:\s+AMD|\s+COR)?\s+([A-Z0-9]{4}\b[\s\S]*?)(?:=\s*|$)/i);
+              if (!m) return;
+              let body = ("TAF " + m[1]).replace(/\s+/g, " ").trim();
+              if (!body.endsWith("=")) body += "=";
+              const iss = body.match(/\b([A-Z0-9]{4})\s+(\d{6})Z\b/);
+              let issueTime = null;
+              if (iss) {
+                const dd = +iss[2].slice(0,2), hh = +iss[2].slice(2,4), mm = +iss[2].slice(4,6);
+                const d = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), dd, hh, mm));
+                if (d.getTime() - now > 2*864e5) d.setUTCMonth(d.getUTCMonth() - 1);
+                if (now - d.getTime() > 36*36e5) return;
+                issueTime = d.toISOString();
+              }
+              out.push({ icaoId: icao, rawTAF: formatTaf(body), issueTime, mostRecent: 1, name: icao });
+            } catch (_) {}
+          }));
+          return out;
+        }
         window.fetch = async function (input, init) {
-          const url = typeof input === "string" ? input : input && input.url ? input.url : "";
-          if (url.includes("aviationweather.gov") && !url.startsWith(PROXY)) {
-            const res = await orig(PROXY + url, init);
-            if (url.includes("/taf") && res.ok) {
+          const url = typeof input === "string" ? input : (input && input.url) || "";
+          if (!url.includes("aviationweather.gov/api/data")) return orig(input, init);
+          const isMetar = url.includes("/metar"), isTaf = url.includes("/taf"), ids = idsFrom(url);
+          try {
+            const res = await viaProxy(url);
+            if (isTaf && res.ok) {
               try {
                 const data = await res.clone().json();
                 if (Array.isArray(data)) {
-                  const formatted = data.map((row) =>
-                    row && row.rawTAF
-                      ? { ...row, rawTAF: formatTafBody(row.rawTAF) }
-                      : row,
-                  );
-                  return new Response(JSON.stringify(formatted), {
-                    status: res.status,
-                    statusText: res.statusText,
-                    headers: { "Content-Type": "application/json" },
-                  });
+                  const formatted = data.map(row => row && row.rawTAF ? { ...row, rawTAF: formatTaf(row.rawTAF) } : row);
+                  const have = new Set(formatted.map(r => (r.icaoId || "").toUpperCase()));
+                  const missing = ids.filter(id => !have.has(id));
+                  if (missing.length) formatted.push(...await iemTaf(missing));
+                  return new Response(JSON.stringify(formatted), { status: 200, headers: { "Content-Type": "application/json" } });
+                }
+              } catch (_) {}
+            }
+            if (isMetar && res.ok) {
+              try {
+                const data = await res.clone().json();
+                if (Array.isArray(data)) {
+                  const have = new Set(data.map(r => (r.icaoId || "").toUpperCase()));
+                  const missing = ids.filter(id => !have.has(id));
+                  if (missing.length) data.push(...await nwsMetar(missing));
+                  return new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
                 }
               } catch (_) {}
             }
             return res;
+          } catch (_) {
+            if (isMetar) return new Response(JSON.stringify(await nwsMetar(ids)), { status: 200, headers: { "Content-Type": "application/json" } });
+            if (isTaf) return new Response(JSON.stringify(await iemTaf(ids)), { status: 200, headers: { "Content-Type": "application/json" } });
+            return orig(input, init);
           }
-          return orig(input, init);
         };
       })();
     </script>
@@ -61,7 +127,7 @@
     <link rel="stylesheet" href="./theme-overlay.css">
   </head>
   <body>
-    <a class="wx-home-link" href="../">← wx-tools</a>
+    <a class="wx-home-link" href="../" title="Back to wx-tools home">← Home</a>
     <div id="root"></div>
     <script>
       (() => {
@@ -73,22 +139,16 @@
           if (!tabs.length) return;
           tabs.forEach((t) => {
             const text = t.textContent.trim();
-            if (text === "Met Watch") t.textContent = "METWATCH";
+            if (text === "Met Watch" || text === "MetWatch") t.textContent = "METWATCH";
           });
           const byLabel = {};
-          Array.from(bar.querySelectorAll(".tab")).forEach((t) => {
-            byLabel[t.textContent.trim()] = t;
-          });
+          Array.from(bar.querySelectorAll(".tab")).forEach((t) => { byLabel[t.textContent.trim()] = t; });
           if (byLabel["METWATCH"] && byLabel["Products"]) {
-            order.forEach((label) => {
-              const el = byLabel[label];
-              if (el) bar.appendChild(el);
-            });
+            order.forEach((label) => { const el = byLabel[label]; if (el) bar.appendChild(el); });
           }
         }
-        const obs = new MutationObserver(fixTabs);
-        obs.observe(document.documentElement, { childList: true, subtree: true });
-        setInterval(fixTabs, 500);
+        new MutationObserver(fixTabs).observe(document.documentElement, { childList: true, subtree: true });
+        setInterval(fixTabs, 800);
       })();
     </script>
   </body>
