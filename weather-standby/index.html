@@ -9,6 +9,114 @@
       content="1W051 weather standby console — METAR/TAF board, mission thresholds, WWA log, and brief builder."
     />
     <title>1W051 Stand-By Console</title>
+    <script>
+      // GitHub Pages cannot use the Vite AWC proxy. Rewrite those calls
+      // through CORS-enabled NWS / IEM endpoints and keep AWC JSON shape.
+      (() => {
+        const orig = window.fetch.bind(window);
+        const json = (data, status = 200) =>
+          new Response(JSON.stringify(data), {
+            status,
+            headers: { "Content-Type": "application/json" },
+          });
+        const v = (o) => (o && typeof o === "object" && "value" in o ? o.value : null);
+        const idsOf = (url) =>
+          new URL(url, location.href).searchParams.get("ids") || "";
+
+        function altimFromRaw(raw) {
+          const m = /A(\d{4})/.exec(raw || "");
+          return m ? Number(m[1]) / 100 : null;
+        }
+
+        async function metars(ids) {
+          const list = ids.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+          const rows = await Promise.all(
+            list.map(async (id) => {
+              const r = await orig(
+                `https://api.weather.gov/stations/${id}/observations/latest`,
+                { headers: { Accept: "application/geo+json" } },
+              );
+              if (!r.ok) return null;
+              const j = await r.json();
+              const p = j.properties || {};
+              const raw = p.rawMessage || "";
+              const visM = v(p.visibility);
+              let visib = visM == null ? null : Number((visM / 1609.344).toFixed(1));
+              if (visib != null && visib >= 10) visib = "10+";
+              const wspdKmh = v(p.windSpeed);
+              const wgstKmh = v(p.windGust);
+              const clouds = (p.cloudLayers || []).map((c) => ({
+                cover: c.amount,
+                base:
+                  c.base && c.base.value != null
+                    ? Math.round(c.base.value * 3.28084)
+                    : null,
+              }));
+              const ts = p.timestamp ? Date.parse(p.timestamp) : Date.now();
+              const coords = j.geometry && j.geometry.coordinates;
+              const slpPa = v(p.seaLevelPressure);
+              const baroPa = v(p.barometricPressure);
+              return {
+                icaoId: id,
+                rawOb: raw,
+                temp: v(p.temperature),
+                dewp: v(p.dewpoint),
+                wdir: v(p.windDirection),
+                wspd: wspdKmh == null ? null : Math.round(wspdKmh / 1.852),
+                wgst: wgstKmh == null ? null : Math.round(wgstKmh / 1.852),
+                visib,
+                altim:
+                  slpPa != null
+                    ? slpPa / 100
+                    : baroPa != null
+                      ? baroPa / 100
+                      : altimFromRaw(raw),
+                clouds,
+                cover: clouds[0]?.cover || "CLR",
+                lat: coords ? coords[1] : null,
+                lon: coords ? coords[0] : null,
+                obsTime: Math.floor(ts / 1000),
+                reportTime: p.timestamp || new Date(ts).toISOString(),
+                name: id,
+                wxString: p.textDescription || null,
+              };
+            }),
+          );
+          return rows.filter(Boolean);
+        }
+
+        async function tafs(ids) {
+          const list = ids.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean);
+          return Promise.all(
+            list.map(async (id) => {
+              const pil = "TAF" + (id.startsWith("K") && id.length === 4 ? id.slice(1) : id);
+              const r = await orig(
+                `https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py?fmt=text&pil=${encodeURIComponent(pil)}`,
+              );
+              if (!r.ok) return { icaoId: id, rawTAF: "", issueTime: null };
+              const text = (await r.text()).replace(/[\x01\x03]/g, "").trim();
+              const m = text.match(new RegExp(`TAF(?:\\s+AMD|\\s+COR)?[\\s\\S]*${id}[\\s\\S]*`, "i"));
+              return { icaoId: id, rawTAF: (m ? m[0] : text).trim(), issueTime: null };
+            }),
+          );
+        }
+
+        const isAwc = (url) =>
+          url.includes("aviationweather.gov") || url.includes("/api/awc");
+
+        window.fetch = async function (input, init) {
+          const url = typeof input === "string" ? input : input && input.url ? input.url : "";
+          try {
+            if (isAwc(url) && url.includes("/metar")) return json(await metars(idsOf(url)));
+            if (isAwc(url) && url.includes("/taf")) return json(await tafs(idsOf(url)));
+            if (isAwc(url) && url.includes("/airsigmet")) return json([]);
+          } catch (err) {
+            return json({ error: String(err) }, 502);
+          }
+          return orig(input, init);
+        };
+      })();
+    </script>
     <script type="module" crossorigin src="./dist/assets/index-D3QOWLM3.js"></script>
     <link rel="stylesheet" crossorigin href="./dist/assets/index-B9rkFgCl.css">
   </head>
